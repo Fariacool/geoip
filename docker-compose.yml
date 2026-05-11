@@ -9,17 +9,13 @@ services:
       LISTEN_ADDR: ${LISTEN_ADDR:-0.0.0.0:8080}
       DATA_DIR: ${DATA_DIR:-/data}
     volumes:
-      - geoip-data:${DATA_DIR:-/data}
+      - ${HOST_DATA_DIR:-./data}:${DATA_DIR:-/data}
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
     restart: unless-stopped
-
-volumes:
-  geoip-data:
-    driver: local
 
 networks:
   default:

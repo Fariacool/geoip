@@ -18,6 +18,13 @@ ensure_env() {
   fi
 }
 
+ensure_host_data_dir() {
+  local host_data_dir
+  host_data_dir="$(sed -n 's/^HOST_DATA_DIR=//p' .env | tail -n 1)"
+  host_data_dir="${host_data_dir:-./data}"
+  mkdir -p "${host_data_dir}"
+}
+
 show_usage() {
   cat <<'EOF'
 Usage: ./compose {init|up|down|restart|logs|ps|pull|upgrade|redeploy|config} [service]
@@ -40,6 +47,7 @@ Environment:
 Common overrides:
   IMAGE_NAME            Override the image tag, e.g. geoip:local
   HOST_PORT             Override published port, default 8080
+  HOST_DATA_DIR         Override host data directory, default ./data
   COMPOSE_NETWORK_NAME  Override the Docker network name
 EOF
 }
@@ -51,6 +59,7 @@ case "${1:-}" in
     ;;
   up)
     ensure_env
+    ensure_host_data_dir
     compose_cmd up -d
     ;;
   down)
@@ -79,11 +88,13 @@ case "${1:-}" in
     ;;
   upgrade)
     ensure_env
+    ensure_host_data_dir
     compose_cmd pull
     compose_cmd up -d
     ;;
   redeploy)
     ensure_env
+    ensure_host_data_dir
     compose_cmd up -d
     ;;
   config)
