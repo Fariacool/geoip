@@ -1,4 +1,5 @@
 use std::{fs, io};
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
@@ -8,7 +9,7 @@ use ahash::AHashMap;
 use arc_swap::ArcSwapOption;
 use chrono::DateTime;
 use flate2::read::GzDecoder;
-use log::{error, info, warn};
+use log::{info, warn};
 use maxminddb::{geoip2, MaxMindDbError};
 use thiserror::Error;
 use tokio::time::MissedTickBehavior;
@@ -283,27 +284,19 @@ impl MaxMindService {
 			continent_code: res.continent.as_ref().and_then(|c| c.code).map(str::to_owned),
 			continent_name: res.continent
 				.as_ref()
-				.and_then(|c| c.names.as_ref())
-				.and_then(|c| c.get(locale))
-				.map(|c| (*c).to_owned()),
+				.and_then(|c| localized_name(c.names.as_ref(), locale)),
 			country_id: res.country.as_ref().and_then(|c| c.geoname_id),
 			country_iso_code: res.country.as_ref().and_then(|c| c.iso_code).map(str::to_owned),
 			country_name: res.country.as_ref()
-				.and_then(|c| c.names.as_ref())
-				.and_then(|c| c.get(locale))
-				.map(|c| (*c).to_owned()),
+				.and_then(|c| localized_name(c.names.as_ref(), locale)),
 			subdivisions: res.subdivisions.iter().flatten().map(|s| GeoNameSubdivision {
 				id: s.geoname_id,
 				iso_code: s.iso_code.map(str::to_owned),
-				name: s.names.as_ref()
-					.and_then(|n| n.get(locale))
-					.map(|n| (*n).to_owned()),
+				name: localized_name(s.names.as_ref(), locale),
 			}).collect(),
 			city_id: res.city.as_ref().and_then(|c| c.geoname_id),
 			city_name: res.city.as_ref()
-				.and_then(|c| c.names.as_ref())
-				.and_then(|c| c.get(locale))
-				.map(|c| (*c).to_owned()),
+				.and_then(|c| localized_name(c.names.as_ref(), locale)),
 			metro_code: res.location.as_ref().and_then(|c| c.metro_code),
 			postal_code: res.postal.as_ref().and_then(|c| c.code).map(str::to_owned),
 			timezone: res.location.as_ref().and_then(|c| c.time_zone).map(str::to_owned),
@@ -344,4 +337,10 @@ impl MaxMindService {
 	pub fn default_edition(&self) -> Option<&str> {
 		self.config.maxmind_editions.first().map(String::as_str)
 	}
+}
+
+fn localized_name(names: Option<&BTreeMap<&str, &str>>, locale: &str) -> Option<String> {
+	names
+		.and_then(|names| names.get(locale).or_else(|| names.get("en")))
+		.map(|name| (*name).to_owned())
 }
