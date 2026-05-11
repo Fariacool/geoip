@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:25-alpine AS node_builder
 
 WORKDIR /usr/src/app
@@ -7,7 +9,8 @@ RUN npm i -g pnpm@10.33.0
 COPY package.json ./
 COPY pnpm-lock.yaml ./
 
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --frozen-lockfile --store-dir /pnpm/store
 
 COPY rsbuild.config.ts ./
 COPY tsconfig.json ./
@@ -28,7 +31,9 @@ RUN apk add --no-cache pkgconfig libressl-dev musl-dev
 
 ENV RUSTFLAGS='-C target-feature=-crt-static'
 
-RUN cargo install cargo-chef --locked
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
+    cargo install cargo-chef --locked
 
 FROM cargo_chef AS rust_planner
 
@@ -47,14 +52,21 @@ WORKDIR /usr/src/app
 
 COPY --from=rust_planner /usr/src/app/recipe.json recipe.json
 
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=geoip-cargo-target,target=/usr/src/app/target \
+    cargo chef cook --release --recipe-path recipe.json
 
 COPY Cargo.toml ./
 COPY Cargo.lock ./
 COPY src ./src
 COPY openapi.yaml ./
 
-RUN cargo build --release --bin geoip
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=geoip-cargo-target,target=/usr/src/app/target \
+    cargo build --release --bin geoip && \
+    cp /usr/src/app/target/release/geoip /usr/local/bin/geoip
 
 FROM alpine AS runtime
 
@@ -74,7 +86,7 @@ RUN adduser \
     --uid "${UID}" \
     "${USER}"
 
-COPY --from=rust_builder /usr/src/app/target/release/geoip ./
+COPY --from=rust_builder /usr/local/bin/geoip ./
 COPY --from=node_builder /usr/src/app/dist ./dist
 
 RUN mkdir -p /data && chown -R ${UID}:${UID} /data
