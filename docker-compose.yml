@@ -1,0 +1,26 @@
+services:
+  geoip:
+    image: ${IMAGE_NAME:-ghcr.io/fariacool/geoip:latest}
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      LISTEN_ADDR: ${LISTEN_ADDR:-0.0.0.0:8080}
+      DATA_DIR: ${DATA_DIR:-/data}
+    volumes:
+      - geoip-data:${DATA_DIR:-/data}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+
+volumes:
+  geoip-data:
+    driver: local
+
+networks:
+  default:
+    name: ${COMPOSE_NETWORK_NAME:-geoip}

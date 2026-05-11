@@ -1,0 +1,97 @@
+#!/bin/bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "${SCRIPT_DIR}"
+
+DEFAULT_SERVICE="geoip"
+
+compose_cmd() {
+  docker compose "$@"
+}
+
+ensure_env() {
+  if [ ! -f .env ]; then
+    cp .env.example .env
+    echo "Created .env from .env.example. Review it before exposing this service publicly." >&2
+  fi
+}
+
+show_usage() {
+  cat <<'EOF'
+Usage: ./compose {init|up|down|restart|logs|ps|pull|upgrade|redeploy|config} [service]
+
+Commands:
+  init      Validate Docker Compose configuration
+  up        Start services in background
+  down      Stop and remove services
+  restart   Restart services (optional: service name)
+  logs      Follow logs (default: geoip, or specify service)
+  ps        Show running containers
+  pull      Pull images from registry
+  upgrade   Pull images from registry and restart
+  redeploy  Restart using current IMAGE_NAME without pull
+  config    Show resolved Docker Compose configuration
+
+Environment:
+  Copy .env.example to .env and edit it before first deploy.
+
+Common overrides:
+  IMAGE_NAME            Override the image tag, e.g. geoip:local
+  HOST_PORT             Override published port, default 8080
+  COMPOSE_NETWORK_NAME  Override the Docker network name
+EOF
+}
+
+case "${1:-}" in
+  init)
+    ensure_env
+    compose_cmd config
+    ;;
+  up)
+    ensure_env
+    compose_cmd up -d
+    ;;
+  down)
+    ensure_env
+    compose_cmd down
+    ;;
+  restart)
+    ensure_env
+    if [ -n "${2:-}" ]; then
+      compose_cmd restart "${2}"
+    else
+      compose_cmd restart
+    fi
+    ;;
+  logs)
+    ensure_env
+    compose_cmd logs -f "${2:-${DEFAULT_SERVICE}}"
+    ;;
+  ps)
+    ensure_env
+    compose_cmd ps
+    ;;
+  pull)
+    ensure_env
+    compose_cmd pull
+    ;;
+  upgrade)
+    ensure_env
+    compose_cmd pull
+    compose_cmd up -d
+    ;;
+  redeploy)
+    ensure_env
+    compose_cmd up -d
+    ;;
+  config)
+    ensure_env
+    compose_cmd config
+    ;;
+  *)
+    show_usage
+    exit 1
+    ;;
+esac
