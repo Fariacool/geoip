@@ -7,7 +7,7 @@ RUN npm i -g pnpm
 COPY package.json ./
 COPY pnpm-lock.yaml ./
 
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 COPY rsbuild.config.ts ./
 COPY tsconfig.json ./

@@ -10,6 +10,11 @@
 		"type-check": "tsc --noEmit",
 		"openapi-ts": "openapi-ts"
 	},
+	"pnpm": {
+		"onlyBuiltDependencies": [
+			"core-js"
+		]
+	},
 	"dependencies": {
 		"classnames": "^2.5.1",
 		"leaflet": "^1.9.4",
