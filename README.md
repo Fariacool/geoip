@@ -57,6 +57,10 @@ GeoIP service on http://localhost:8080/.
 - `GET /api/ip` - Detect requester IP.
 - `GET /api/geoip` - Perform GeoIP lookup.
   Can be protected with API key.
+- `GET /api/geoip/combined` - Perform combined GeoIP lookup.
+  Defaults to `GeoLite2-City`, falls back to `GeoLite2-Country`
+  when country data is missing, and merges `GeoLite2-ASN` fields
+  when available. Can be protected with API key.
 - `GET /api/timezones` - Get all known timezone mappings from
   ids to POSIX specification (useful for embedded systems
   without timezone database). Can be protected with API key.

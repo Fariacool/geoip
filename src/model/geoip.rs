@@ -36,6 +36,15 @@ pub struct GeoIpLookupQuery {
 	pub edition: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct GeoIpCombinedLookupQuery {
+	pub ip: Option<IpAddr>,
+	pub locale: Option<String>,
+	pub city_edition: Option<String>,
+	pub country_edition: Option<String>,
+	pub asn_edition: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GeoIpLookupResult {
 	pub ip: IpAddr,

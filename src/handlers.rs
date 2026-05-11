@@ -15,8 +15,21 @@ use metrics::histogram;
 use tower_http::services::{ServeDir, ServeFile};
 use utoipa_swagger_ui::SwaggerUi;
 use crate::extractors::{ApiKeyAuth, ApiKeyOrRecaptchaAuth, ClientIp};
-use crate::model::{ErrorDTO, GeoIpLookupQuery, GeoIpLookupResult, GeoIpStatus, IndexPageCtx, IpDetectResult};
+use crate::model::{
+	ErrorDTO,
+	GeoIpCombinedLookupQuery,
+	GeoIpInfo,
+	GeoIpLookupQuery,
+	GeoIpLookupResult,
+	GeoIpStatus,
+	IndexPageCtx,
+	IpDetectResult,
+};
 use crate::state::{AppState, MaxMindServiceError};
+
+const DEFAULT_CITY_EDITION: &str = "GeoLite2-City";
+const DEFAULT_COUNTRY_EDITION: &str = "GeoLite2-Country";
+const DEFAULT_ASN_EDITION: &str = "GeoLite2-ASN";
 
 pub fn build_router(state: Arc<AppState>) -> Router {
 	let openapi_spec: serde_json::Value = serde_yaml::from_str(include_str!("../openapi.yaml"))
@@ -32,6 +45,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 		.route("/api/status", get(get_status))
 		.route("/api/ip", get(detect_ip))
 		.route("/api/geoip", get(lookup_geoip))
+		.route("/api/geoip/combined", get(lookup_geoip_combined))
 		.route("/api/timezones", get(get_all_timezones))
 		.route("/api/metrics", get(|| async move { metric_handle.render() }))
 		.merge(
@@ -145,6 +159,87 @@ async fn lookup_geoip(
 		)),
 		Err(err) => Err(err.into()),
 	}
+}
+
+async fn lookup_geoip_combined(
+	State(state): State<Arc<AppState>>,
+	ClientIp(client_ip): ClientIp,
+	_auth: ApiKeyOrRecaptchaAuth,
+	Query(query): Query<GeoIpCombinedLookupQuery>,
+) -> Result<Json<GeoIpLookupResult>, ErrorDTO> {
+	let start = Instant::now();
+	let ip = query.ip.unwrap_or(client_ip);
+	let locale = query.locale.as_deref().unwrap_or("en");
+	let city_edition = query.city_edition.as_deref().unwrap_or(DEFAULT_CITY_EDITION);
+	let country_edition = query.country_edition.as_deref().unwrap_or(DEFAULT_COUNTRY_EDITION);
+	let asn_edition = query.asn_edition.as_deref().unwrap_or(DEFAULT_ASN_EDITION);
+	
+	let city_info = lookup_optional_edition(&state, ip, locale, city_edition)?;
+	let country_info = if city_info.as_ref().is_none_or(is_country_info_missing) {
+		lookup_optional_edition(&state, ip, locale, country_edition)?
+	} else {
+		None
+	};
+	let asn_info = lookup_optional_edition(&state, ip, locale, asn_edition)?;
+	let info = merge_geoip_info(city_info, country_info, asn_info);
+	let elapsed = start.elapsed();
+	histogram!(
+		"lookup_duration_seconds",
+		"edition" => "combined".to_owned(),
+	).record(elapsed.as_secs_f64());
+	Ok(Json(GeoIpLookupResult {
+		ip,
+		info,
+		elapsed: elapsed.as_secs_f64(),
+	}))
+}
+
+fn lookup_optional_edition(
+	state: &AppState,
+	ip: std::net::IpAddr,
+	locale: &str,
+	edition: &str,
+) -> Result<Option<GeoIpInfo>, ErrorDTO> {
+	match state.maxmind.lookup(ip, locale, Some(edition)) {
+		Ok(info) => Ok(info),
+		Err(MaxMindServiceError::UnknownEdition | MaxMindServiceError::MissingDatabase) => Ok(None),
+		Err(err) => Err(err.into()),
+	}
+}
+
+fn merge_geoip_info(
+	city_info: Option<GeoIpInfo>,
+	country_info: Option<GeoIpInfo>,
+	asn_info: Option<GeoIpInfo>,
+) -> Option<GeoIpInfo> {
+	let mut info = city_info
+		.or_else(|| country_info.clone())
+		.or_else(|| asn_info.clone())?;
+	
+	if let Some(country_info) = country_info {
+		merge_country_info(&mut info, country_info);
+	}
+	if let Some(asn_info) = asn_info {
+		info.autonomous_system_number = asn_info.autonomous_system_number;
+		info.autonomous_system_organization = asn_info.autonomous_system_organization;
+	}
+	Some(info)
+}
+
+fn is_country_info_missing(info: &GeoIpInfo) -> bool {
+	info.country_id.is_none()
+		&& info.country_iso_code.is_none()
+		&& info.country_name.is_none()
+}
+
+fn merge_country_info(info: &mut GeoIpInfo, country_info: GeoIpInfo) {
+	info.continent_id = info.continent_id.or(country_info.continent_id);
+	info.continent_code = info.continent_code.take().or(country_info.continent_code);
+	info.continent_name = info.continent_name.take().or(country_info.continent_name);
+	info.country_id = info.country_id.or(country_info.country_id);
+	info.country_iso_code = info.country_iso_code.take().or(country_info.country_iso_code);
+	info.country_name = info.country_name.take().or(country_info.country_name);
+	info.is_in_european_union = info.is_in_european_union.or(country_info.is_in_european_union);
 }
 
 async fn get_all_timezones(

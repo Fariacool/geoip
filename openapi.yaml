@@ -78,6 +78,55 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorDTO" }
+
+  /api/geoip/combined:
+    get:
+      operationId: lookupGeoIpCombined
+      summary: Perform combined GeoIP lookup
+      description: Looks up City, falls back to Country when country data is missing, and merges ASN data when available.
+      security: [{ bearer: [] }]
+      parameters:
+        - in: query
+          name: ip
+          description: Defaults to requester IP address
+          schema: { type: string }
+        - in: query
+          name: locale
+          description: Defaults to "en"
+          schema: { type: string }
+        - in: query
+          name: city_edition
+          description: Defaults to "GeoLite2-City"
+          schema: { type: string }
+        - in: query
+          name: country_edition
+          description: Defaults to "GeoLite2-Country"
+          schema: { type: string }
+        - in: query
+          name: asn_edition
+          description: Defaults to "GeoLite2-ASN"
+          schema: { type: string }
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GeoIpLookupResult" }
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorDTO" }
+        401:
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorDTO" }
+        500:
+          description: Internal server error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorDTO" }
   
   /api/timezones:
     get:
